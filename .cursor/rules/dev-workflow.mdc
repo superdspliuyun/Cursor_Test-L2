@@ -1,0 +1,235 @@
+---
+alwaysApply: true
+---
+# 开发流程管理规则
+
+## 项目配置
+
+```
+project:
+  name: "智能数据分析助理"
+  team："智能数据分析助理"
+  linear_team: "NL2SQL"
+  repo: "https://github.com/superdspliuyun/Cursor_Test-L2.git"
+```
+
+## 核心功能
+
+当你用日常口语描述开发工作时，我会自动帮你：
+
+1. **更新 Linear 任务状态** - 根据你的描述判断任务状态变化
+2. **推荐 Git 分支** - 根据任务类型推荐合适的分支名
+3. **创建 Git 工作流** - 建议 commit、PR 相关操作
+4. **同步 Plan 到 Linear** - 解析 markdown 计划文件，创建/更新 Linear Issues
+
+## 意图识别规则
+
+### 1. 开始任务
+当你说：
+- "开始做 XXX"
+- "我要做 XXX 了"
+- "开始开发 XXX"
+- "去做 XXX 功能"
+
+执行操作：
+- 在 Linear 中查找或创建相关 Issue
+- 将状态改为 **In Progress**
+- 推荐分支格式：`feature/lyu-{issue-id}-{简短描述}`
+
+### 2. 完成功能
+当你说：
+- "完成了"
+- "做完了"
+- "搞定了"
+- "功能完成了"
+
+执行操作：
+- 将 Linear Issue 状态改为 **Done**
+- 建议创建 commit
+- 推荐分支合并时机
+
+### 3. 暂停/恢复任务
+- "暂停 XXX" → 状态改为 **Backlog**
+- "继续做 XXX" → 状态改为 **In Progress**
+
+### 4. 创建任务
+当你说：
+- "新建一个任务 XXX"
+- "创建一个 TODO"
+- "加一个任务"
+
+执行操作：
+- 在 Linear 项目中创建 Issue
+- 默认状态 **Backlog**
+- 自动分配到 Team: Lyun
+
+### 5. 查询任务
+当你说：
+- "看看我的任务"
+- "有哪些待办的"
+- "任务列表"
+
+执行操作：
+- 调用 `list_issues` 查询 assignee="me" 的任务
+- 按状态分组展示
+
+### 6. Plan 同步（核心功能）
+当你说：
+- "同步计划到 Linear"
+- "把 plan 同步过去"
+- "更新 Linear 任务"
+- "同步 Phase"
+
+执行操作：
+1. 读取 `.cursor/plans/` 目录下的 `.plan.md` 文件
+2. 解析 markdown 内容，识别 `## Phase X` 或 `Phase X` 格式的标题
+3. 解析每个 Phase 下的 `- ` 列表项作为独立任务
+4. 对于每个任务：
+   - title 格式：`[Phase X] {任务内容}`
+   - description: Phase 名称 + 任务详细描述
+5. 在 Linear 项目中批量创建或更新 Issues
+6. 返回同步结果摘要（创建了 X 个，更新了 X 个）
+
+### 7. Phase 级进度同步（自动触发）
+当满足以下任一条件时，**主动**触发 Linear 同步，无需用户重复下令：
+
+- 用户明确说"开始做 phase X"、"做 phase X 了"、"开始 phase X"
+- 用户说"phase X 完成了"、"phase X 全部做完"、"同步 linear"（尤其在 phase 切换的上下文里）
+- 一个 Phase 中所有 todo 都被标为 completed 后，下一次回复开头自动追加同步动作
+
+执行操作：
+1. 扫描 `.cursor/plans/*.plan.md` 的 YAML frontmatter 中 `todos` 数组（id 以 `[Phase X]` 前缀匹配）
+2. 找到对应 Phase 的全部任务
+3. 对比 Linear `list_issues(team=智能数据分析助理, query=Phase X)` 当前状态
+4. 状态映射：
+   - `pending` → Linear `Todo`
+   - `in_progress` → Linear `In Progress`
+   - `completed` → Linear `Done`
+5. 批量调用 `save_issue(id=NL2SQL-XXX, state=...)` 更新
+6. 在回复末尾用清单形式汇总："Phase X 已同步：N 个 Done / M 个 In Progress / K 个 Todo"
+
+**重要：用户已要求"后续开发过程中请按照每个 phase 中的节点及时同步 linear"，默认在每次 phase 切换点、phase 完成点自动执行，无需再询问。**
+
+## Markdown Plan 格式规范
+
+```
+## Phase 1: 前后端基础框架搭建
+
+### 后端搭建
+- 初始化 FastAPI 项目结构
+- 配置 SQLite3 数据库连接
+- 创建 .env 环境配置模板
+
+### 前端搭建
+- 初始化 React + Vite 项目
+- 配置 TypeScript
+- 安装 Ant Design 组件库
+
+---
+
+## Phase 2: 前端 UI 开发
+
+- 聊天管理组件 (左侧栏)
+- 问答区域组件 (中间)
+- 可视化组件 (右侧)
+```
+
+**解析规则**：
+1. `## Phase X:` 或 `### Phase X:` 识别为一个 Phase
+2. Phase 下的 `- ` 列表项识别为具体任务
+3. 如果有 `### 子标题`，子标题作为任务分组前缀
+4. 任务 title 格式：`[Phase 1] 后端搭建 - 初始化 FastAPI 项目结构`
+5. `---` 分隔符不参与解析
+
+## Linear API 调用指南
+
+### 创建 Issue
+```python
+save_issue(
+    title="[Phase 1] 后端搭建 - 初始化 FastAPI 项目结构",
+    description="Phase 1: 前后端基础框架搭建\n\n后端搭建任务",
+    team="Lyun",
+    project="ea07443a-9a97-4179-8d4a-4527893967fb"
+)
+```
+
+### 更新 Issue 状态
+```python
+save_issue(
+    id="LYU-6",
+    state="Done"  # 或 "In Progress", "Backlog", "Cancelled"
+)
+```
+
+### 批量创建 Issues
+当同步 Plan 时，一次调用创建一个 Issue，不要一次创建多个。
+
+### 查询任务列表
+```python
+list_issues(
+    project="ea07443a-9a97-4179-8d4a-4527893967fb",
+    assignee="me"
+)
+```
+
+## 分支命名规范
+
+```
+feature/lyu-{issue-id}-{描述}    # 新功能
+fix/lyu-{issue-id}-{描述}         # Bug 修复
+docs/lyu-{issue-id}-{描述}        # 文档更新
+refactor/lyu-{issue-id}-{描述}    # 重构
+```
+
+## Commit 规范
+
+```
+{type}({scope}): {description}
+
+types:
+  feat: 新功能
+  fix: 修复 bug
+  docs: 文档
+  style: 代码格式
+  refactor: 重构
+  test: 测试
+  chore: 构建/工具
+```
+
+## 示例对话
+
+**用户**: "同步计划到 Linear"
+**AI**:
+- 读取 `.cursor/plans/` 目录
+- 发现 2 个 Phase，解析出 31 个任务
+- 批量创建到 Linear 项目
+- 返回：
+  ```
+  已同步 31 个任务到 Linear 项目「智能数据分析助理」：
+  - Phase 1: 11 个任务
+  - Phase 2: 7 个任务
+  - Phase 3: 8 个任务
+  - Phase 4: 5 个任务
+  ```
+
+**用户**: "开始做登录功能"
+**AI**:
+- 在 Linear 创建/更新 Issue "登录功能" 状态为 In Progress
+- 推荐分支：`feature/lyu-123-login`
+- 询问是否需要创建分支
+
+**用户**: "登录做好了"
+**AI**:
+- 将 Linear Issue 状态改为 Done
+- 建议 commit：`feat(auth): 完成用户登录功能`
+- 询问是否需要创建 PR
+
+## 注意事项
+
+- 所有 Linear 操作需要先确认 Issue ID
+- Git 操作前先确认当前分支状态
+- 敏感操作（如删除任务）需要二次确认
+- 如果 Linear MCP 不可用，提示用户检查配置
+- Plan 同步时会检查已存在的 Issue，避免重复创建
+- **Phase 级同步默认开启**：用户已约定"按 phase 节点及时同步 Linear"，每个 phase 开始/完成时自动执行，无需用户重复下令
+- 同步前先 `list_issues` 拿到该 Phase 全部 issue 标识符，再批量 `save_issue` 写入，避免盲写
