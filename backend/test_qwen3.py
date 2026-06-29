@@ -13,12 +13,29 @@ import os
 import sys
 import json
 import time
+from pathlib import Path
 from pprint import pformat
 
 # ====== 配置 ======
-API_KEY = "sk-****"
-BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL = "qwen3-max"
+# 从 .env 读取（项目根目录 backend/.env），禁止把真实 key 硬编码到代码里
+try:
+    from dotenv import load_dotenv
+
+    _ENV_PATH = Path(__file__).resolve().parent / ".env"
+    load_dotenv(_ENV_PATH, override=False)
+except Exception:
+    pass
+
+API_KEY = os.getenv("DASHSCOPE_API_KEY", "").strip()
+BASE_URL = os.getenv(
+    "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+).strip()
+MODEL = os.getenv("QWEN_MODEL", "qwen3-max").strip()
+
+if not API_KEY or API_KEY == "your_api_key_here":
+    sys.stderr.write(
+        "[!] 未检测到 DASHSCOPE_API_KEY。请在 backend/.env 中设置后再运行。\n"
+    )
 
 
 def banner(title: str):
@@ -329,7 +346,7 @@ def test_4_langchain():
 
 # ============================================================
 def main():
-    print(f"[*] API key 前 6 位: {API_KEY[:6]}***")
+    print(f"[*] API key: 已从环境变量读取（长度 {len(API_KEY)}，不打印）")
     print(f"[*] Base URL: {BASE_URL}")
     print(f"[*] Model: {MODEL}")
 

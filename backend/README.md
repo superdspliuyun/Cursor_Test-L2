@@ -45,11 +45,22 @@ pip install -r requirements.txt
 
 ### 2. 配置环境变量
 
-复制 `.env` 文件并填入你的阿里云百炼 API Key：
+复制 `.env.example` 为 `.env` 并填入你的阿里云百炼 API Key：
 
 ```bash
-DASHSCOPE_API_KEY=your-real-api-key
+cp .env.example .env       # macOS / Linux
+# Windows (PowerShell):
+Copy-Item .env.example .env
 ```
+
+然后编辑 `.env`：
+
+```bash
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+> ⚠️ **安全提示**：`backend/.env` 已被 `.gitignore` 排除，**禁止**把真实 key 提交到 git 或写入任何代码/文档/截图。
+> 测试脚本（`test_qwen3.py` / `test_nl2sql.py`）会自动从 `.env` 读取，不再硬编码。
 
 ### 3. 启动服务
 

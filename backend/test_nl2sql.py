@@ -22,7 +22,28 @@ import os
 import sys
 import time
 import sqlite3
+from pathlib import Path
 from pprint import pformat
+
+# 从 .env 读取（项目根目录 backend/.env），禁止把真实 key 硬编码到代码里
+try:
+    from dotenv import load_dotenv
+
+    _ENV_PATH = Path(__file__).resolve().parent / ".env"
+    load_dotenv(_ENV_PATH, override=False)
+except Exception:
+    pass
+
+API_KEY = os.getenv("DASHSCOPE_API_KEY", "").strip()
+BASE_URL = os.getenv(
+    "DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+).strip()
+MODEL = os.getenv("QWEN_MODEL", "qwen3-max").strip()
+
+if not API_KEY or API_KEY == "your_api_key_here":
+    sys.stderr.write(
+        "[!] 未检测到 DASHSCOPE_API_KEY。请在 backend/.env 中设置后再运行。\n"
+    )
 
 
 # ============================================================
@@ -187,9 +208,9 @@ def build_agent():
     from langchain.agents import create_agent
 
     llm = ChatOpenAI(
-        model="qwen3-max",
-        api_key="sk-****",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model=MODEL,
+        api_key=API_KEY,
+        base_url=BASE_URL,
         temperature=0.2,
     )
 
