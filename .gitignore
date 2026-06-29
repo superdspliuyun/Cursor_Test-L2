@@ -48,3 +48,8 @@ logs/
 *.tmp
 *.bak
 *.swp
+
+# 本地工具二进制
+# scripts/bin/gitleaks.exe 由开发者本地放置，**不** commit（体积大）
+scripts/bin/
+!scripts/seed_db.py

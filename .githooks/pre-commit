@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# ============================================
+# Pre-commit hook: 阻止敏感信息进入 commit
+# ============================================
+# 工具链: gitleaks (https://github.com/gitleaks/gitleaks)
+# 安装:   详见 docs/SECURITY.md
+# 跳过:   git commit --no-verify  (慎用!)
+# ============================================
+
+set -e
+
+# 仓库根目录
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# 颜色输出
+if [ -t 1 ]; then
+  RED='\033[0;31m'
+  YELLOW='\033[1;33m'
+  GREEN='\033[0;32m'
+  NC='\033[0m'
+else
+  RED=''; YELLOW=''; GREEN=''; NC=''
+fi
+
+echo "${YELLOW}[pre-commit]${NC} Scanning staged changes for secrets (gitleaks)..."
+
+# 查找 gitleaks：项目内 → 系统 PATH → Windows / macOS / Linux 常见位置
+# 注意: hook 由 Git for Windows 在 sh 子进程里跑，要兼容 MSYS / POSIX 路径
+GITLEAKS_BIN=""
+if [ -x "./scripts/bin/gitleaks" ]; then
+  GITLEAKS_BIN="./scripts/bin/gitleaks"
+elif [ -x "./scripts/bin/gitleaks.exe" ]; then
+  GITLEAKS_BIN="./scripts/bin/gitleaks.exe"
+elif command -v gitleaks >/dev/null 2>&1; then
+  GITLEAKS_BIN="$(command -v gitleaks)"
+else
+  # 在 Git Bash (MSYS) 下把 Windows 路径转 POSIX 路径再试一次
+  for winpath in \
+    "C:/Users/Lyun/tools/gitleaks.exe" \
+    "D:/vibe-usr/tools/gitleaks.exe" \
+    "$USERPROFILE/tools/gitleaks.exe" \
+    "$HOME/tools/gitleaks.exe"; do
+    if [ -n "$winpath" ] && [ -f "$winpath" ]; then
+      posix_path="$(cygpath -u "$winpath" 2>/dev/null || echo "$winpath")"
+      if [ -x "$posix_path" ]; then
+        GITLEAKS_BIN="$posix_path"
+        break
+      fi
+    fi
+  done
+  # macOS / Linux 默认安装位置
+  for syspath in "/usr/local/bin/gitleaks" "/opt/homebrew/bin/gitleaks" "/usr/bin/gitleaks"; do
+    if [ -x "$syspath" ]; then
+      GITLEAKS_BIN="$syspath"
+      break
+    fi
+  done
+fi
+
+if [ -z "$GITLEAKS_BIN" ]; then
+  echo "${YELLOW}[pre-commit]${NC} ${YELLOW}WARNING:${NC} gitleaks not found."
+  echo "  Install: https://github.com/gitleaks/gitleaks (or place binary in scripts/bin/)"
+  echo "  Skipping secret scan. ${RED}Not recommended for production repos.${NC}"
+  exit 0
+fi
+
+# 只扫描 staged 的文件（比全仓库扫描快得多）
+# --staged:  只看 staged
+# --verbose: 显示匹配详情
+# --redact:  隐藏真实 key（防止 secret 在 hook 输出里二次泄露）
+"$GITLEAKS_BIN" protect --staged --redact --verbose \
+  --config "$REPO_ROOT/.gitleaks.toml"
+RC=$?
+
+if [ $RC -ne 0 ]; then
+  echo ""
+  echo "${RED}[pre-commit] ✗ Secret(s) detected in staged changes!${NC}"
+  echo "${RED}                Commit blocked to prevent leaking credentials.${NC}"
+  echo ""
+  echo "  If this is a false positive, you can either:"
+  echo "    1. Add the finding to .gitleaks.toml [allowlist] rules"
+  echo "    2. Bypass with:  git commit --no-verify  (use only if you're sure)"
+  echo ""
+  exit 1
+fi
+
+echo "${GREEN}[pre-commit] ✓ No secrets found.${NC}"
+exit 0

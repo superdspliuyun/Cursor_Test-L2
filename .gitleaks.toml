@@ -1,0 +1,97 @@
+# ============================================
+# gitleaks 配置 — 防止敏感信息泄露
+# ============================================
+# 文档：https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+#
+# 本项目用到的关键环境变量：
+#   - DASHSCOPE_API_KEY    (阿里云百炼 / Qwen3)
+#
+# gitleaks 内置规则已覆盖常见 provider 密钥；下面只补充项目专属规则。
+# ============================================
+
+title = "智能数据分析助理 — secret scan"
+
+# 允许 gitleaks 自动下载官方默认规则（覆盖 AWS / GitHub / OpenAI / DashScope 等）
+[extend]
+useDefault = true
+
+# 扩展允许/拒绝文件路径
+# 不扫描 node_modules / 数据文件 / lock 文件 / plan 文档
+[allowlist]
+description = "Allow common non-secret paths"
+paths = [
+  '''node_modules/''',
+  '''.git/''',
+  '''dist/''',
+  '''build/''',
+  '''data/''',
+  '''\.venv/''',
+  '''venv/''',
+  '''__pycache__/''',
+  '''package-lock\.json''',
+  '''pnpm-lock\.yaml''',
+  '''yarn\.lock''',
+  '''requirements.*\.txt$''',
+  '''.*\.min\.js$''',
+  '''.*\.map$''',
+  '''.*\.md$''',                 # 文档里常出现"占位符"sk-xxxx，不算泄露
+  '''.*\.example$''',            # .env.example 模板
+  '''.cursor/plans/.*\.plan\.md''',  # 计划文档可能含"sk-xxxx"示例
+]
+
+# 项目专属规则：阿里云 DashScope / Qwen3 API key
+# 形如 sk- + 32+ hex（小写）
+# 注意: gitleaks v8 用 RE2 引擎，**不支持** lookahead/lookbehind，改用 [allowlist] regex 排除占位符
+[[rules]]
+id = "dashscope-api-key"
+description = "Aliyun DashScope / Qwen3 API key"
+regex = '''\bsk-[a-f0-9]{32,}\b'''
+keywords = [
+  "dashscope",
+  "qwen",
+  "api_key",
+  "apikey",
+  "api-key",
+]
+tags = ["secret", "api-key", "llm", "dashscope", "qwen"]
+
+  [rules.allowlist]
+  # 排除合法占位符（"sk-xxxx" / "sk-****" / "sk-your_api_key_here" 等）
+  regexes = [
+    '''\bsk-(xxxx|XXXX|\*{3,}|placeholder|your[-_]?api[-_]?key|dummy|fake|test|sample|example|changeme|change[-_]?me|1234|abcd)\b''',
+  ]
+  stopwords = [
+    "your_api_key_here",
+    "your-api-key-here",
+    "<your-api-key>",
+    "your_real_api_key",
+    "your-real-api-key",
+  ]
+
+# 防御性规则: 任意"key 提示"附近出现的 sk- 前缀
+[[rules]]
+id = "sk-prefix-with-context"
+description = "Generic sk- prefixed key (32+ hex) with API context"
+regex = '''(?i)(api[_-]?key|apikey|secret|token|password|bearer|authorization)["'\s:=]+sk-[a-z0-9_-]{20,}'''
+tags = ["secret", "generic", "api-key"]
+
+  [rules.allowlist]
+  regexes = [
+    '''(?i)(api[_-]?key|apikey|secret|token|password|bearer|authorization)["'\s:=]+sk-(xxxx|XXXX|\*{3,}|placeholder|your[-_]?api[-_]?key|dummy|fake|test|sample|example|changeme|change[-_]?me|1234|abcd)\b''',
+  ]
+
+# 项目专属规则：未来可能新增的 provider
+# [[rules]]
+# id = "openai-api-key"
+# description = "OpenAI / OpenAI-compatible API key"
+# regex = '''\bsk-(?!xxxx|****|placeholder|your[-_]?api[-_]?key)[A-Za-z0-9_-]{20,}\b'''
+# keywords = ["openai", "api_key", "apikey"]
+# tags = ["secret", "openai"]
+
+# ============================================
+# 报告与日志
+# ============================================
+[report]
+format = "table"
+verbose = true
+exit-code = 1
